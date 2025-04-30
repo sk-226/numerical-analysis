@@ -1,3 +1,4 @@
 .vscode/
+build/
 check_significant_digits.dSYM/
 *.exe
