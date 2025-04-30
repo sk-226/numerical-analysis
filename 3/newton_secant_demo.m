@@ -51,5 +51,7 @@ function newton_secant_demo
   title('Convergence history  for  f(x)=x^2-7x+12');
   legend show, grid on
 
+  set(gca, 'FontSize', 14);
+
   saveas(gcf, 'newton_secant_demo.svg'); % save figure
 end
