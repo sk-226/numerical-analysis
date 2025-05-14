@@ -42,7 +42,7 @@ function tf = is_spd(A, method, symTol, posTol)
     if ~isreal(A)
         error('IS_SPD:InputNotReal','A must be real (Hermitian not supported).');
     end
-    if size(A,1) ~= size(A,2)
+    if size(A, 1) ~= size(A, 2)
         error('IS_SPD:NotSquare','A must be a square matrix.');
     end
     
@@ -58,7 +58,7 @@ function tf = is_spd(A, method, symTol, posTol)
     % ---------------------------- SPD test ------------------------------
     switch lower(method)
         case 'chol'                                % ---------- fast ----------
-            [~,p] = chol(A);
+            [~, p] = chol(A);
             if p == 0
                 tf = true;
             else
