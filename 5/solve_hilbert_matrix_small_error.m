@@ -1,5 +1,5 @@
-function solve_hilbert_matrix(n)
-    %SOLVE_HILBERT_MATRIX  Solve a Hilbert linear system and study its conditioning.
+function solve_hilbert_matrix_small_error(n)
+    %SOLVE_HILBERT_MATRIX_SMALL_ERROR  Solve a Hilbert linear system and study its conditioning.
     %   solve_hilbert_matrix(N) builds the N-by-N Hilbert matrix A,
     %   computes the infinity‑norm condition number kappa_inf(A) = ‖A‖_∞ ‖A^{-1}‖_∞
     %   using a custom LU factorisation with partial pivoting,
@@ -10,7 +10,7 @@ function solve_hilbert_matrix(n)
     %   so you can inspect numerical errors arising from the algorithm itself.
     %
     %   Example:
-    %       >> solve_hilbert_matrix(10)
+    %       >> solve_hilbert_matrix_small_error(10)
     
     % Validate input
     if nargin~=1 || ~isscalar(n) || n<=0 || n~=floor(n)
@@ -18,7 +18,7 @@ function solve_hilbert_matrix(n)
     end
     
     %----------------------------------------------------------------------
-    % Build Hilbert matrix A and right‑hand side b
+    % Build Hilbert matrix A and right‑hand side b with small error
     %----------------------------------------------------------------------
     A = zeros(n);
     for i = 1:n
@@ -29,10 +29,17 @@ function solve_hilbert_matrix(n)
     true_x = ones(n,1);
     b = A*true_x;
     
+    % small error in b
+    delta_b =zeros(n, 1);
+    delta_b(1) = 0.01 * b(1);
+    b = b + delta_b;
+
     %----------------------------------------------------------------------
-    % Infinity‑norm of A
+    % Infinity‑norm of A, B, and Δb
     %----------------------------------------------------------------------
     normInfA = max(sum(abs(A),2));
+    normInfB = max(sum(abs(b), 1));
+    normInfDeltaB = max(abs(delta_b));
     
     %----------------------------------------------------------------------
     % LU factorisation with partial pivoting
@@ -75,11 +82,13 @@ function solve_hilbert_matrix(n)
     fprintf('‖A‖_∞          = %.4e\n', normInfA);
     fprintf('‖A^{-1}‖_∞     = %.4e\n', normInfInvA);
     fprintf('κ_∞(A)          = %.4e\n', kappaInf);
+    fprintf('Δb‖_∞ / ‖b‖_∞   = %.4e\n', normInfDeltaB/normInfB);
     fprintf('Residual ‖b-Ax‖_∞ = %.4e\n', resNormInf);
     fprintf('Error ‖x-true‖_∞  = %.4e\n', errNormInf);
+    fprintf('κ_∞(A) * (Δb‖_∞ / ‖b‖_∞) = %.4e\n', kappaInf * (normInfDeltaB/normInfB));
     
     %----------------------------------------------------------------------
-    % Nested helper functions
+    % Helper functions
     %----------------------------------------------------------------------
     
     function [L,U,P] = lu_pp(M)
