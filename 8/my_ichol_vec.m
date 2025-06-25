@@ -9,7 +9,7 @@ L = ichol(sparse(A)); % LL' format
 d = diag(L); % diagonal vector
 d2 = d .^ 2;
 L = L .* (1 ./ d'); % unit diagonalization
-deltaA = A - L .* d2' * L';
+deltaA = A - (L .* d2') * L';
 toc;
 
 fprintf('L:\n');
