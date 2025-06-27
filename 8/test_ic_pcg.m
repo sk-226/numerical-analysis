@@ -18,7 +18,7 @@ n = size(A, 1);
 
 % Start timer for preconditioner construction
 tic;
-preconditioner = build_preconditioner(A, precType);
+preconditioner = build_preconditioner(A, precType, ictype = ictype, droptol = droptol);
 time_prec = toc;
 
 % Start timer for PCG method
