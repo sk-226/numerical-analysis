@@ -9,14 +9,15 @@ import utils.plot_conv_hist;
 load('inputs/HB/nos7.mat');
 A = sparse(Problem.A);
 
-% Diagonal scaling
-precType = 'diag';
+% SSOR
+precType = 'ssor';
+omega = 1.0;
 
 n = size(A, 1);
 
 % Start timer for preconditioner construction
 tic;
-preconditioner = build_preconditioner(A, precType);
+preconditioner = build_preconditioner(A, precType, omega=omega);
 time_prec = toc;
 
 % Start timer for PCG method
