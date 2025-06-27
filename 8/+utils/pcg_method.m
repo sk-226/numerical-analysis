@@ -1,10 +1,10 @@
 function [x, results] = pcg_method(A, preconditioner, opt)
 
     arguments
-        A (:, :) {mustBeSquare} % must be SPD
-        preconditioner (1, 1) {mustBeFunctionHandle} % preconditioner
-        opt.tol (1, 1) {mustBePositive} = 1.0e-10
-        opt.max_iter (1, 1) {mustBePositive, mustBeInteger} = []
+        A (:, :) % must be SPD
+        preconditioner % preconditioner
+        opt.tol (1, 1) {mustBePositive(opt.tol)} = 1.0e-10
+        opt.max_iter (1, 1) {mustBePositive(opt.max_iter), mustBeInteger(opt.max_iter)} = []
     end
 
     % default value of max_iter

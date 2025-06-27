@@ -2,8 +2,8 @@ function [x, results] = cg_method(A, opt)
 
     arguments
         A (:, :) % must be SPD
-        opt.tol (1, 1) {mustBePositive} = 1.0e-10
-        opt.max_iter (1, 1) {mustBePositive, mustBeInteger} = []
+        opt.tol (1, 1) {mustBePositive(opt.tol)} = 1.0e-10
+        opt.max_iter (1, 1) {mustBePositive(opt.max_iter), mustBeInteger(opt.max_iter)} = []
     end
 
     % default value of max_iter
