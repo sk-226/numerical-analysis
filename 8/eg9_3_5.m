@@ -1,3 +1,5 @@
+clc; clearvars; close all;
+
 import utils.incompleteCholeskyDecomposition;
 
 A = [4 -1 -1 0;
