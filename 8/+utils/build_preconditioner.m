@@ -2,7 +2,7 @@ function preconditioner = build_preconditioner(A, type, opts)
     % BUILDPRECONDITIONER  Construct a function handle that applies a
     %                      preconditioner (computes M^{-1} r)
     %
-    %   preconditioner = build_preconditioner(A, type, opts)
+    %   This function is used in pcg_method.m
     %
     %   INPUT
     %       A     : SPD matrix (sparse recommended)
@@ -12,9 +12,16 @@ function preconditioner = build_preconditioner(A, type, opts)
     %   OUTPUT
     %       preconditioner : function_handle  –  r := M^{-1} r
     %
-    %   If you want to measure the setup time, do so at the call site:
+    %   NOTE: If you want to measure the setup time, do so at the call site:
     %       tic;  prec = build_preconditioner(...);  setupTime = toc;
     %
+    %   EXAMPLES
+    %     >> A = Problem.A; % load problem
+    %     >> preconditioner = build_preconditioner(A, 'ic'); % Incomplete Cholesky
+    %     >> [x, results] = pcg_method(A, preconditioner, tol = 1.0e-12, max_iter = 2 * n);
+    % -------------------------------------------------------------------------
+
+    % --------------------------- input validation ----------------------------
     arguments
         A (:, :) % mustBeSymmetric
         type string
@@ -28,6 +35,7 @@ function preconditioner = build_preconditioner(A, type, opts)
     if ~issymmetric(A)
         error("A must be symmetric");
     end
+    % --------------------------- end input validation ------------------------
 
     % size of A
     n = size(A, 1);
@@ -72,7 +80,8 @@ function preconditioner = build_preconditioner(A, type, opts)
             % NOTE: It is effective when using ict and setting droptol for ichol.
             %       No huge changes in performance if using nofill. (probably??)
             %       Nofill is the memory efficient option,
-            %       but slower convergence compared to ict. (probably??)
+            %       but slower convergence compared to ict. (probably??)ke
+            
             S = spdiags(1 ./ sqrt(diag(A)), 0, n, n);
             Atil = S * A * S;
             L = ichol(Atil, struct("type", opts.ictype, "droptol", opts.droptol));

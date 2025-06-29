@@ -16,11 +16,11 @@ function [L, D, deltaA] = incompleteCholeskyDecomposition(A)
     %     deltaA : n×n error matrix such that A = L * D * L^T + deltaA
     %
     %   NOTES
-    %   • This method preserves the sparsity pattern of the original matrix A
-    %   • Only components with indices in P = {(i,j) | a_ij ≠ 0} are computed
-    %   • Other components are forced to be zero, resulting in an incomplete decomposition
-    %   • The error deltaA arises from this sparsity constraint
-    %   • As the ichol function, no need to return deltaA
+    %   - This method preserves the sparsity pattern of the original matrix A
+    %   - Only components with indices in P = {(i,j) | a_ij ≠ 0} are computed
+    %   - Other components are forced to be zero, resulting in an incomplete decomposition
+    %   - The error deltaA arises from this sparsity constraint
+    %   - As the ichol function, no need to return deltaA
     %
     %   EXAMPLES
     %     >> A = [4, 2, 0; 2, 5, 1; 0, 1, 3];  % sparse symmetric matrix
