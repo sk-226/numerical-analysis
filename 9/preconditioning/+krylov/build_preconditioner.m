@@ -26,7 +26,7 @@ function preconditioner = build_preconditioner(A, type, opts)
         A (:, :) % mustBeSymmetric
         type string
         opts.omega (1, 1) {mustBeInRange(opts.omega, 0, 2, "exclusive")} = 1.0 % SSOR: over-relaxation parameter
-        opts.ictype {mustBeMember(opts.ictype, ['nofill', 'ict'])} = 'nofill' % ichol: type (default: "nofill" / "ict")
+        opts.ictype {mustBeMember(opts.ictype, ["nofill", "ict"])} = "nofill" % ichol: type (default: "nofill" / "ict")
         opts.droptol (1, 1) {mustBeNonnegative(opts.droptol)} = 0.0 % ichol: drop tolerance
     end
 
