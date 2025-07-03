@@ -1,16 +1,16 @@
 function expanded_table = expand_results_table(results_summary)
-    % expand_results_table - 結果テーブルの構造体を展開して見やすくする
+    % expand_results_table - expand results table. (temporary)
     %
     % Input:
-    %   results_summary - 元のテーブル（Var4に構造体を含む）
+    %   results_summary - original table (check exp_cmp_preconditioner.m)
     %
     % Output:
-    %   expanded_table - 展開されたテーブル
+    %   expanded_table - expanded table
     
-    % 行数を取得
+    % get number of rows
     n_rows = height(results_summary);
     
-    % 展開後のデータを格納する配列を初期化
+    % initialize arrays for expanded data
     matrix_names = cell(n_rows, 1);
     preconditioners = cell(n_rows, 1);
     precon_times = zeros(n_rows, 1);
@@ -22,23 +22,23 @@ function expanded_table = expand_results_table(results_summary)
     final_relerr_2s = zeros(n_rows, 1);
     final_relerr_As = zeros(n_rows, 1);
     
-    % 各行を処理
+    % process each row
     for i = 1:n_rows
-        % 基本情報を取得
+        % get basic information
         matrix_names{i} = results_summary.Var1{i};
         preconditioners{i} = results_summary.Var2(i);
         precon_times(i) = results_summary.Var3(i);
         
-        % 構造体を展開
+        % expand struct
         result_struct = results_summary.Var4{i};
         
-        % 各フィールドを取得
+        % get fields
         iter_finals(i) = result_struct.iter_final;
         is_convergeds(i) = result_struct.is_converged;
         solve_times(i) = result_struct.time;
         true_relres_2s(i) = result_struct.true_relres_2;
         
-        % hist_*の末尾値を取得
+        % hist_*の末尾値を取りこ得
         final_relres_2s(i) = result_struct.hist_relres_2(end);
         final_relerr_2s(i) = result_struct.hist_relerr_2(end);
         final_relerr_As(i) = result_struct.hist_relerr_A(end);
