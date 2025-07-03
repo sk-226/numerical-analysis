@@ -5,7 +5,6 @@ function plot_conv_hist(results, opt)
         opt.y_lim = [1e-13 1e+1]
         opt.y_tick = [1e-12 1e-09 1e-06 1e-3 1]
         opt.y_tick_label = {'-12', '-9', '-6', '-3', '0'}
-
     end
     % plot convergence history
     % CAUTION: x_axis starts from 0

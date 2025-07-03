@@ -42,10 +42,12 @@ function preconditioner = build_preconditioner(A, type, opts)
 
     switch lower(type) % convert to lowercase (case insensitive!!)
         case "diag" % diagonal scaling
+            % NOTE: time for preconditioner construction should be acknowledged 0
             d_inv = 1 ./ diag(A); % diagonal vector
             preconditioner = @(r) d_inv .* r; % D^{-1} * r
 
         case "ssor" % SSOR
+            % NOTE: time for preconditioner construction should be acknowledged 0
             omega = opts.omega;
             d = diag(A); % diagonal vector
             L = sparse(tril(A, -1)); % strictly lower triangular matrix (U = L' because A is symmetric)
@@ -59,6 +61,7 @@ function preconditioner = build_preconditioner(A, type, opts)
             preconditioner = @(r) mldivide(DU, d .* mldivide(DL, r));
 
         case "ic" % Incomplete Cholesky
+            % IMPORTANT: Mesure the time for preconditioner construction
             L = ichol(A, struct("type", opts.ictype, "droptol", opts.droptol));
             % NOTE: same as the following (might be faster and compact?? like backslash)
             %       y = mldivide(L,r);
@@ -80,7 +83,7 @@ function preconditioner = build_preconditioner(A, type, opts)
             % NOTE: It is effective when using ict and setting droptol for ichol.
             %       No huge changes in performance if using nofill. (probably??)
             %       Nofill is the memory efficient option,
-            %       but slower convergence compared to ict. (probably??)ke
+            %       but slower convergence compared to ict. (probably??)
             
             S = spdiags(1 ./ sqrt(diag(A)), 0, n, n);
             Atil = S * A * S;
