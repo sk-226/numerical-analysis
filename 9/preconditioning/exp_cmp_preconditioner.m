@@ -9,8 +9,18 @@ import utils.prec_config2str;
 import utils.expand_results_table;
 
 % *IMPORTANT: MAKE SURE TO MKDIR BEFORE RUNNING THIS SCRIPT
-inputs_dir = "inputs/exp_cmp_preconditioner";
-outputs_dir = "outputs/exp_cmp_preconditioner";
+exp_title = "exp_cmp_preconditioner";
+inputs_dir = strcat("inputs/", exp_title);
+outputs_dir = strcat("outputs/", exp_title);
+
+if ~exist(inputs_dir, "dir")
+    mkdir(inputs_dir);
+end
+
+if ~exist(outputs_dir, "dir")
+    mkdir(outputs_dir);
+end
+
 d = dir(fullfile(inputs_dir,"*.mat"));
 matrix_files = string({d.name}); 
 
@@ -45,6 +55,7 @@ for i = 1:numel(matrix_files)
     for j = 1:numel(preconditioner_configs)
         config = preconditioner_configs{j};
         prec_labels(j) = prec_config2str(config);
+        succeed_ichol = true; % default value
 
         if strcmp(config.type, "none")
             time_prec = 0;
@@ -64,25 +75,42 @@ for i = 1:numel(matrix_files)
                 opt(end+1:end+2) = {'droptol', config.droptol};
             end
 
-            % tic for preconditioner construction
-            tic;
-            preconditioner = build_preconditioner(A, prec_name, opt{:});
-            time_prec = toc;
 
-            [~, result] = pcg_method(A, preconditioner, tol=tol, max_iter=max_iter);
+            try
+                % tic for preconditioner construction
+                tic;
+                preconditioner = build_preconditioner(A, prec_name, opt{:});
+                time_prec = toc;
+
+                [~, result] = pcg_method(A, preconditioner, tol=tol, max_iter=max_iter);
+            catch
+                fprintf("FAILED: ichol\n");
+                succeed_ichol = false;
+                result = struct( ...
+                    'iter_final', {-1}, ...
+                    'is_converged', {false}, ... % boolean
+                    'time', {-1}, ...
+                    'hist_relres_2', {-1}, ...
+                    'true_relres_2', {-1}, ...
+                    'hist_relerr_2', {-1}, ...
+                    'hist_relerr_A', {-1} ...
+                );
+            end
         end
 
         new_row = {Problem.name, prec_name, time_prec, {result}};
 
         results_summary = [results_summary; new_row];
 
-        save_fig_prefix = strcat(extractAfter(Problem.name, "/"), "_", prec_name, "_", prec_labels(j));
-        figure_title = strcat(Problem.name, "(prec:", prec_name, ", opt:", prec_labels(j), ")");
-        plot_conv_hist(result, figure_title, save_fig=true, show_plot=false, ...
-            save_fig_prefix=save_fig_prefix, format_type="pdf", output_dir=outputs_dir);
+        if succeed_ichol
+            save_fig_prefix = strcat(extractAfter(Problem.name, "/"), "_", prec_name, "_", prec_labels(j));
+            figure_title = strcat(Problem.name, "(prec:", prec_name, ", opt:", prec_labels(j), ")");
+            plot_conv_hist(result, figure_title, save_fig=true, show_plot=false, ...
+                save_fig_prefix=save_fig_prefix, format_type="pdf", output_dir=outputs_dir);
+        end
     end
 
     expanded_results = expand_results_table(results_summary);
-    writetable(expanded_results, strcat(outputs_dir, "/results_expanded.csv"));
+    writetable(expanded_results, strcat(outputs_dir, exp_title, "/results_expanded.csv"));
 end
 
