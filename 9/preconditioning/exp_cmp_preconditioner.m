@@ -98,7 +98,7 @@ for i = 1:numel(matrix_files)
             end
         end
 
-        new_row = {Problem.name, prec_name, time_prec, {result}};
+        new_row = {Problem.name, n, prec_name, time_prec, {result}};
 
         results_summary = [results_summary; new_row];
 
