@@ -6,13 +6,12 @@ app = marimo.App(width="full")
 
 @app.cell
 def _():
-    import pandas as pd
-    import marimo as mo
-    import plotly.graph_objects as go
-    import plotly.express as px
-    import numpy as np
-
     import warnings
+
+    import marimo as mo
+    import numpy as np
+    import pandas as pd
+    import plotly.graph_objects as go
 
     warnings.filterwarnings("ignore")
 
@@ -36,7 +35,7 @@ def _(table):
     print(f"Dataset shape: {table.shape}")
     print(f"Columns: {list(table.columns)}")
     print(f"\nPreconditioner types: {table['Preconditioner'].unique()}")
-    print(f"\nConvergence status distribution:")
+    print("\nConvergence status distribution:")
     print(table["Converged"].value_counts())
     return
 
@@ -332,7 +331,6 @@ def _(converged_data, go, np):
         height=600,
     )
 
-
     return
 
 
@@ -474,7 +472,7 @@ def _(np, table):
     print("=" * 50)
     print(f"Analysis target cases: {len(converged_cases)}")
 
-    # Residual gap analysis (zero division protection)
+    # Residual gap analysis
     # Exclude cases with very small FinalRelRes2 values (< 1e-16)
     valid_cases = converged_cases[converged_cases["FinalRelRes2"] >= 1e-16].copy()
     valid_cases["ResidualGap"] = (
@@ -493,8 +491,12 @@ def _(np, table):
     print(f"Gap digits mean: {valid_cases['ResidualGapDigits'].mean():.2f} digits")
     print(f"Gap digits median: {valid_cases['ResidualGapDigits'].median():.2f} digits")
     print(f"Gap digits maximum: {valid_cases['ResidualGapDigits'].max():.2f} digits")
-    print(f"Cases with residual gap > 1 digit: {(valid_cases['ResidualGapDigits'] > 1).sum()}")
-    print(f"Cases with residual gap > 2 digits: {(valid_cases['ResidualGapDigits'] > 2).sum()}")
+    print(
+        f"Cases with residual gap > 1 digit: {(valid_cases['ResidualGapDigits'] > 1).sum()}"
+    )
+    print(
+        f"Cases with residual gap > 2 digits: {(valid_cases['ResidualGapDigits'] > 2).sum()}"
+    )
 
     return (valid_cases,)
 
@@ -511,7 +513,9 @@ def _(valid_cases):
         .round(3)
     )
 
-    print("Preconditioner-wise Residual gap statistics (count/mean/median/std/min/max):")
+    print(
+        "Preconditioner-wise Residual gap statistics (count/mean/median/std/min/max):"
+    )
     print(gap_stats)
 
     # Analysis of large residual gap cases by preconditioner
