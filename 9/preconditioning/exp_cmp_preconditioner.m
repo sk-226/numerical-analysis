@@ -111,6 +111,6 @@ for i = 1:numel(matrix_files)
     end
 
     expanded_results = expand_results_table(results_summary);
-    writetable(expanded_results, strcat(outputs_dir, exp_title, "/results_expanded.csv"));
+    writetable(expanded_results, strcat(outputs_dir, "/results_expanded.csv"));
 end
 

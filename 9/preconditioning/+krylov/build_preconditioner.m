@@ -28,6 +28,8 @@ function preconditioner = build_preconditioner(A, type, opts)
         opts.omega (1, 1) {mustBeInRange(opts.omega, 0, 2, "exclusive")} = 1.0 % SSOR: over-relaxation parameter
         opts.ictype {mustBeMember(opts.ictype, ["nofill", "ict"])} = "nofill" % ichol: type (default: "nofill" / "ict")
         opts.droptol (1, 1) {mustBeNonnegative(opts.droptol)} = 0.0 % ichol: drop tolerance
+        opts.michol {mustBeMember(opts.michol, ["off", "on"])} = "off"; % ichol
+        opts.diagcomp (1, 1) {mustBeNonnegative(opts.diagcomp)} = 0; % ichol: = alpha (default: 0)
     end
 
     % check if A is symmetric
@@ -62,7 +64,7 @@ function preconditioner = build_preconditioner(A, type, opts)
 
         case "ic" % Incomplete Cholesky
             % IMPORTANT: Mesure the time for preconditioner construction
-            L = ichol(A, struct("type", opts.ictype, "droptol", opts.droptol));
+            L = ichol(A, struct("type", opts.ictype, "droptol", opts.droptol, "michol", opts.michol, "diagcomp", opts.diagcomp));
             % NOTE: same as the following (might be faster and compact?? like backslash)
             %       y = mldivide(L,r);
             %       z = mldivide(L',y);
@@ -87,7 +89,7 @@ function preconditioner = build_preconditioner(A, type, opts)
             
             S = spdiags(1 ./ sqrt(diag(A)), 0, n, n);
             Atil = S * A * S;
-            L = ichol(Atil, struct("type", opts.ictype, "droptol", opts.droptol));
+            L = ichol(Atil, struct("type", opts.ictype, "droptol", opts.droptol, "michol", opts.michol));
             ICCG = @(v) L' \ (L \ v);
             preconditioner = @(r) S * ICCG(S * r);
 

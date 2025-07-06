@@ -30,7 +30,19 @@ function lbl = prec_config2str(config)
                 dt = 0;
             end
 
-            lbl = "ic_" + string(ict) + "_droptol" + num2str(dt);
+            if isfield(config, "michol")
+                michol = config.michol;
+            else
+                michol = "off";
+            end
+
+            if isfield(config, "diagcomp")
+                dc = config.diagcomp;
+            else
+                dc = 0;
+            end
+
+            lbl = "ic_" + string(ict) + "_droptol" + strrep(num2str(dt), '.', '_') + "_michol" + michol + "_dc" + strrep(num2str(dc), '.', '_');
 
         otherwise
             % unknown type

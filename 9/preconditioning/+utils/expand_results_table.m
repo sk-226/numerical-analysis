@@ -26,8 +26,8 @@ function expanded_table = expand_results_table(results_summary)
     % process each row
     for i = 1:n_rows
         % get basic information
-        matrix_names{i} = results_summary.Var1{i};
-        matrix_sizes{i} = results_summary.Var2{i};
+        matrix_names{i} = results_summary.Var1(i);
+        matrix_sizes(i) = results_summary.Var2(i);
         preconditioners{i} = results_summary.Var3(i);
         precon_times(i) = results_summary.Var4(i);
         
