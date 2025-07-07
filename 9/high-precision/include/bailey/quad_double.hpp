@@ -68,7 +68,7 @@ inline QuadDouble sqrt(const QuadDouble& a) {
 // --- Type Conversion ---
 inline double to_double(const QuadDouble& a) { 
     char s[70]; 
-    int d = 15; 
+    int d = 50; // Use higher precision instead of 15
     qxtoqd_(a.qd, &d, s, sizeof(s));
     
     std::string str(s, sizeof(s));
@@ -87,7 +87,7 @@ inline double to_double(const QuadDouble& a) {
 // --- Stream Output ---
 inline std::ostream& operator<<(std::ostream& os, const QuadDouble& q) {
     char s[70]; 
-    int d = 15; 
+    int d = 50; // Use higher precision for output
     qxtoqd_(q.qd, &d, s, sizeof(s)); 
     os << std::string(s, sizeof(s)); 
     return os;

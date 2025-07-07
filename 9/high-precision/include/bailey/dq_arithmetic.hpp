@@ -67,7 +67,7 @@ inline DQNumber sqrt(const DQNumber& a) {
 // Type Conversion
 inline double to_double(const DQNumber& a) { 
     char s[70]; 
-    int d = 15; 
+    int d = 64; // Use full DQ precision instead of 15
     dqtoqd_(a.dq, &d, s, sizeof(s));
     
     std::string str(s, sizeof(s));
@@ -86,7 +86,7 @@ inline double to_double(const DQNumber& a) {
 // Stream Output
 inline std::ostream& operator<<(std::ostream& os, const DQNumber& dq) {
     char s[70]; 
-    int digits = 15; 
+    int digits = 64; // Use full DQ precision
     dqtoqd_(dq.dq, &digits, s, sizeof(s)); 
     os << std::string(s, sizeof(s)); 
     return os;

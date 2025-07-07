@@ -86,3 +86,8 @@ namespace bailey {
 using QXTraits = PrecisionTraits<QuadDouble>;
 using DoubleTraits = PrecisionTraits<double>;
 } // namespace bailey
+
+// Identity function for double type - fixes missing to_double(double) specialization
+inline double to_double(const double& a) {
+    return a;
+}
