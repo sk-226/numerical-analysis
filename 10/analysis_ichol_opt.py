@@ -9,12 +9,14 @@ def _():
     import warnings
 
     import marimo as mo
+    import numpy as np
     import matplotlib.pyplot as plt
     import pandas as pd
     import seaborn as sns
+    from ssdownload import SuiteSparseDownloader, Filter
 
     warnings.filterwarnings("ignore")
-    return mo, pd, plt, sns
+    return Filter, SuiteSparseDownloader, mo, np, pd, plt, sns
 
 
 @app.cell(hide_code=True)
@@ -24,59 +26,268 @@ def _(mo):
 
 
 @app.cell
-def _(pd):
-    def parse_preconditioner_config(df, column_name='preconditioner_configs'):
-        """
-        指定されたカラムの文字列を'='と';'で区切って、新しいカラムを作成する関数
-
-        Parameters:
-        -----------
-        df : pandas.DataFrame
-            処理対象のデータフレーム
-        column_name : str
-            パースする文字列が含まれるカラム名（デフォルト: 'preconditioner_configs'）
-
-        Returns:
-        --------
-        pandas.DataFrame
-            新しいカラムが追加されたデータフレーム
-        """
-        # データフレームのコピーを作成（元のデータフレームを変更しないため）
-        df_result = df.copy()
-
-        # 各行の設定文字列をパース
-        parsed_configs = []
-
-        for idx, config_str in enumerate(df[column_name]):
-            # 空文字列やNaNの場合はスキップ
-            if pd.isna(config_str) or config_str == '':
-                parsed_configs.append({})
-                continue
-
-            # ';'で分割してキーと値のペアを取得
-            config_dict = {}
-            pairs = config_str.split(';')
-
-            for pair in pairs:
-                if '=' in pair:
-                    key, value = pair.split('=', 1)  # 最初の'='で分割
-                    config_dict[key] = value
-
-            parsed_configs.append(config_dict)
-
-        # パースした結果から全てのキーを収集
-        all_keys = set()
-        for config in parsed_configs:
-            all_keys.update(config.keys())
-
-        # 各キーに対して新しいカラムを作成
-        for key in sorted(all_keys):  # ソートして順序を一定に
-            df_result[f'{column_name}_{key}'] = [
-                config.get(key, None) for config in parsed_configs
-            ]
-
-        return df_result
+def _(plt):
+    plt.rcParams['figure.figsize'] = (24, 12)
     return
+
+
+@app.cell
+def _(np, plt, sns):
+    def plot_convergence_by_preconditioner_config(df):
+        """Visualize convergence rates by preconditioner configuration with line plots for each problem kind"""
+    
+        # 1. Data preprocessing
+        # Check for correct column name
+        if 'preconditioner_configs' in df.columns:
+            config_col = 'preconditioner_configs'
+        elif 'preconditioner_config' in df.columns:
+            config_col = 'preconditioner_config'
+        else:
+            print("Warning: preconditioner_config column not found")
+            return None, None, None
+    
+        # Calculate convergence rates for each combination (only is_converged==1 counts as success)
+        convergence_data = df.groupby(['problem_kind', config_col]).agg({
+            'is_converged': [lambda x: (x == 1).mean(), 'count', lambda x: (x == 0).mean(), lambda x: (x == -1).mean()]
+        }).round(4)
+    
+        convergence_data.columns = ['convergence_rate', 'sample_count', 'max_iter_rate', 'ichol_failure_rate']
+        convergence_data = convergence_data.reset_index()
+    
+        # Filter out combinations with insufficient samples (minimum 3 samples)
+        convergence_data = convergence_data[convergence_data['sample_count'] >= 3]
+    
+        print(f"Data Summary:")
+        print(f"- Number of problem kinds: {convergence_data['problem_kind'].nunique()}")
+        print(f"- Number of preconditioner configs: {convergence_data[config_col].nunique()}")
+        print(f"- Valid combinations: {len(convergence_data)}")
+        print(f"- Convergence rate calculation: (is_converged == 1) / total_samples")
+        print(f"- is_converged values: 1=success, 0=max_iter_reached, -1=ichol_failure")
+    
+        # Create index mapping for x-axis with "Config N" format (except for type=none -> None)
+        unique_configs = sorted(convergence_data[config_col].unique())
+        config_to_label = {}
+        config_counter = 1
+    
+        for config in unique_configs:
+            # Check specifically for 'type=none' string
+            if config == 'type=none':
+                config_to_label[config] = 'None'
+            else:
+                config_to_label[config] = f'Config {config_counter}'
+                config_counter += 1
+    
+        label_to_config = {label: config for config, label in config_to_label.items()}
+        convergence_data['config_label'] = convergence_data[config_col].map(config_to_label)
+    
+        # Sort by config label for consistent ordering (None first, then Config 1, 2, ...)
+        convergence_data = convergence_data.sort_values('config_label', 
+                                                       key=lambda x: x.map(lambda y: (y != 'None', y)))
+    
+        # Set up color palette for problem kinds
+        problem_kinds = convergence_data['problem_kind'].unique()
+        colors = plt.cm.tab20(np.linspace(0, 1, len(problem_kinds)))
+        color_map = dict(zip(problem_kinds, colors))
+    
+        # Define line styles and markers for visual separation
+        line_styles = ['-', '--', '-.', ':', '-', '--', '-.', ':', '-', '--']
+        markers = ['o', 's', '^', 'D', 'v', '<', '>', 'p', '*', 'h', '+', 'x']
+    
+        # Create separate figures for each plot
+        plot_convergence_line_graph(convergence_data, config_to_label, problem_kinds, 
+                                   color_map, line_styles, markers)
+    
+        plot_sample_count_heatmap(df, config_col, config_to_label)
+    
+        # Print configuration mapping table
+        print_config_mapping_table(label_to_config)
+    
+        # Statistical summaries and analysis
+        config_stats, problem_stats = print_analysis_results(convergence_data, config_col)
+    
+        return convergence_data, config_stats, problem_stats
+
+    def plot_convergence_line_graph(convergence_data, config_to_label, problem_kinds, 
+                                   color_map, line_styles, markers):
+        """Create the convergence rate line graph with Config N labels"""
+        fig, ax = plt.subplots(1, 1, figsize=(16, 10))
+    
+        # Get unique config labels and create position mapping
+        unique_labels = sorted(convergence_data['config_label'].unique(), 
+                              key=lambda x: (x != 'None', x))
+        label_positions = {label: i for i, label in enumerate(unique_labels)}
+    
+        # Main line plot with visual separation techniques
+        for i, problem_kind in enumerate(problem_kinds):
+            data_subset = convergence_data[convergence_data['problem_kind'] == problem_kind]
+        
+            # Sort data for proper line connections
+            data_subset = data_subset.sort_values('config_label', 
+                                                key=lambda x: x.map(lambda y: (y != 'None', y)))
+        
+            # Use config label positions for x-axis
+            x_values = [label_positions[label] for label in data_subset['config_label']]
+        
+            # Add small jitter to y-values to separate overlapping lines
+            jitter_amount = 0.005  # Small offset
+            jitter = np.random.uniform(-jitter_amount, jitter_amount, len(data_subset))
+            y_values = data_subset['convergence_rate'] + jitter
+        
+            # Cycle through line styles and markers
+            line_style = line_styles[i % len(line_styles)]
+            marker = markers[i % len(markers)]
+        
+            # Vary line width slightly
+            line_width = 2 + (i % 3) * 0.5
+        
+            ax.plot(x_values, y_values, 
+                    linestyle=line_style, marker=marker, label=problem_kind, 
+                    color=color_map[problem_kind], linewidth=line_width, 
+                    markersize=6, alpha=0.85, markerfacecolor='white', 
+                    markeredgewidth=1.5)
+    
+        ax.set_xlabel('Preconditioner Configuration (see mapping table below)', fontsize=12)
+        ax.set_ylabel('Convergence Rate (is_converged == 1)', fontsize=12)
+        ax.set_title('Convergence Rate by Preconditioner Configuration and Problem Kind', 
+                    fontsize=16, fontweight='bold')
+        ax.set_ylim(-0.02, 1.08)  # Extended range to show separated lines better
+        ax.grid(True, alpha=0.3)
+    
+        # Set x-axis ticks and labels to show Config N format
+        ax.set_xticks(range(len(unique_labels)))
+        ax.set_xticklabels(unique_labels, rotation=45, fontsize=10)
+        ax.margins(x=0.01)  # Add small margin to prevent cutting off edge points
+    
+        # Legend settings with better layout for many items
+        if len(problem_kinds) > 10:
+            ax.legend(bbox_to_anchor=(1.02, 1), loc='upper left', ncol=2, fontsize=9)
+        else:
+            ax.legend(bbox_to_anchor=(1.02, 1), loc='upper left', ncol=1, fontsize=10)
+    
+        plt.tight_layout(pad=3.0)  # Add more padding to prevent label cutoff
+        plt.show()
+
+    def plot_sample_count_heatmap(df, config_col, config_to_label):
+        """Create the sample count heatmap with Config N labels"""
+        fig, ax = plt.subplots(1, 1, figsize=(16, 8))
+    
+        # Sample count heatmap for validation with config labels
+        sample_counts = df.groupby(['problem_kind', config_col]).size().reset_index(name='count')
+        sample_counts['config_label'] = sample_counts[config_col].map(config_to_label)
+    
+        # Create pivot table and ensure proper ordering of columns
+        sample_pivot = sample_counts.pivot(index='problem_kind', columns='config_label', values='count').fillna(0)
+    
+        # Reorder columns to put None first, then Config 1, Config 2, etc.
+        cols = list(sample_pivot.columns)
+        ordered_cols = sorted(cols, key=lambda x: (x != 'None', x))
+        sample_pivot = sample_pivot[ordered_cols]
+    
+        sns.heatmap(sample_pivot, annot=True, fmt='g', cmap='Blues', 
+                    ax=ax, cbar_kws={'label': 'Sample Count'})
+        ax.set_title('Sample Count by Problem Kind and Preconditioner Configuration', 
+                    fontsize=16, fontweight='bold')
+        ax.set_xlabel('Preconditioner Configuration (see mapping table below)', fontsize=12)
+        ax.set_ylabel('Problem Kind', fontsize=12)
+        ax.tick_params(axis='x', rotation=45, labelsize=10)
+    
+        plt.tight_layout(pad=3.0)
+        plt.show()
+
+    def print_config_mapping_table(label_to_config):
+        """Print the configuration label to name mapping table"""
+        print("\n" + "="*80)
+        print("PRECONDITIONER CONFIGURATION MAPPING TABLE")
+        print("="*80)
+        print(f"{'Label':<12} | {'Configuration'}")
+        print("-" * 80)
+    
+        # Sort labels: None first, then Config 1, Config 2, ...
+        sorted_labels = sorted(label_to_config.keys(), key=lambda x: (x != 'None', x))
+    
+        for label in sorted_labels:
+            config = label_to_config[label]
+            # Wrap long configurations for better readability
+            if len(config) > 65:
+                wrapped_config = config[:65] + "..."
+            else:
+                wrapped_config = config
+            print(f"{label:<12} | {wrapped_config}")
+    
+        print("="*80)
+
+    def print_analysis_results(convergence_data, config_col):
+        """Print statistical analysis results"""
+        # 3. Statistical summary
+        print("\n=== Statistics by Preconditioner Configuration ===")
+        config_stats = convergence_data.groupby(config_col).agg({
+            'convergence_rate': ['mean', 'std', 'min', 'max'],
+            'max_iter_rate': 'mean',
+            'ichol_failure_rate': 'mean',
+            'sample_count': 'sum'
+        }).round(4)
+        config_stats.columns = ['avg_convergence', 'std_convergence', 'min_convergence', 
+                               'max_convergence', 'avg_max_iter_rate', 'avg_ichol_failure_rate', 'total_samples']
+        config_stats = config_stats.reset_index().sort_values('avg_convergence', ascending=False)
+        print(config_stats)
+    
+        print("\n=== Statistics by Problem Kind ===")
+        problem_stats = convergence_data.groupby('problem_kind').agg({
+            'convergence_rate': ['mean', 'std', 'min', 'max'],
+            'max_iter_rate': 'mean',
+            'ichol_failure_rate': 'mean',
+            'sample_count': 'sum'
+        }).round(4)
+        problem_stats.columns = ['avg_convergence', 'std_convergence', 'min_convergence', 
+                                'max_convergence', 'avg_max_iter_rate', 'avg_ichol_failure_rate', 'total_samples']
+        problem_stats = problem_stats.reset_index().sort_values('avg_convergence', ascending=False)
+        print(problem_stats)
+    
+        # 4. Extract notable combinations
+        print("\n=== Notable Combinations ===")
+    
+        # Best convergence combination
+        best_combo = convergence_data.loc[convergence_data['convergence_rate'].idxmax()]
+        print(f"Best convergence: {best_combo['problem_kind']} + {best_combo[config_col]} = {best_combo['convergence_rate']:.4f}")
+    
+        # Worst convergence combination
+        worst_combo = convergence_data.loc[convergence_data['convergence_rate'].idxmin()]
+        print(f"Worst convergence: {worst_combo['problem_kind']} + {worst_combo[config_col]} = {worst_combo['convergence_rate']:.4f}")
+    
+        # Configurations with high ichol failure rates
+        high_ichol_failure = convergence_data[convergence_data['ichol_failure_rate'] > 0.1]
+        if len(high_ichol_failure) > 0:
+            print(f"\nConfigurations with high ichol failure rates (>10%):")
+            for _, row in high_ichol_failure.iterrows():
+                print(f"  {row['problem_kind']} + {row[config_col]}: {row['ichol_failure_rate']:.3f}")
+    
+        # Most effective problem kind for each preconditioner config
+        print("\nMost effective problem kind for each preconditioner config:")
+        for config in convergence_data[config_col].unique():
+            config_data = convergence_data[convergence_data[config_col] == config]
+            if len(config_data) > 0:
+                best_problem = config_data.loc[config_data['convergence_rate'].idxmax()]
+                print(f"  {config}: {best_problem['problem_kind']} ({best_problem['convergence_rate']:.4f})")
+    
+        return config_stats, problem_stats
+    return (plot_convergence_by_preconditioner_config,)
+
+
+@app.cell
+def _(Filter, List, SuiteSparseDownloader):
+    async def add_problem_kind(df):
+        """
+        from ssdownload import SuiteSparseDownloader, Filter
+            Usage: `await add_problem_kind(df)`
+        """
+        downloader = SuiteSparseDownloader()
+        matrix_names: List[str] = df["matrix_name"].unique()
+        for matrix_name in matrix_names:
+            group, name = matrix_name.split("/", 1)
+            filter = Filter(group=group, name=name)
+            matrix_info = await downloader.find_matrices(filter)
+            df.loc[df["matrix_name"]==matrix_name, "problem_kind"] = matrix_info[0]["kind"]
+    return (add_problem_kind,)
 
 
 @app.cell(hide_code=True)
@@ -143,6 +354,12 @@ def _(df):
 @app.cell
 def _(configs_list):
     configs_list
+    return
+
+
+@app.cell
+async def _(add_problem_kind, df):
+    await add_problem_kind(df)
     return
 
 
@@ -813,12 +1030,173 @@ def _(mo):
 
 
 @app.cell
-def _():
+def _(df, plot_convergence_by_preconditioner_config):
+    _, _, _ = plot_convergence_by_preconditioner_config(df)
+    return
+
+
+@app.cell
+def _(pd):
+    def debug_data_structure(df):
+        """Debug function to check data structure and identify issues"""
+    
+        print("="*60)
+        print("DEBUGGING DATA STRUCTURE")
+        print("="*60)
+    
+        # 1. Check columns
+        print("1. Available columns:")
+        print(df.columns.tolist())
+        print()
+    
+        # 2. Check for preconditioner config column
+        possible_config_cols = ['preconditioner_configs', 'preconditioner_config', 'preconditioner']
+        config_col = None
+    
+        for col in possible_config_cols:
+            if col in df.columns:
+                config_col = col
+                print(f"2. Found config column: '{config_col}'")
+                break
+    
+        if config_col is None:
+            print("2. ERROR: No preconditioner config column found!")
+            print("   Available columns:", df.columns.tolist())
+            return
+    
+        # 3. Check unique values in config column
+        unique_configs = df[config_col].unique()
+        print(f"3. Number of unique configurations: {len(unique_configs)}")
+        print("   First 10 configurations:")
+        for i, config in enumerate(unique_configs[:10]):
+            print(f"   {i+1}: '{config}' (type: {type(config)})")
+        print()
+    
+        # 4. Check for 'none' values
+        none_variants = df[config_col].str.lower().value_counts().head(10) if df[config_col].dtype == 'object' else "Not string type"
+        print("4. Config value frequency (first 10):")
+        print(none_variants)
+        print()
+    
+        # 5. Check is_converged values
+        print("5. is_converged value counts:")
+        print(df['is_converged'].value_counts().sort_index())
+        print()
+    
+        # 6. Check problem_kind values
+        print("6. problem_kind unique values:")
+        print(df['problem_kind'].unique())
+        print()
+    
+        # 7. Sample data grouping
+        print("7. Sample grouping (first 5 combinations):")
+        sample_grouping = df.groupby(['problem_kind', config_col]).size().reset_index(name='count')
+        print(sample_grouping.head())
+        print()
+    
+        # 8. Check for minimum sample requirements
+        sufficient_samples = sample_grouping[sample_grouping['count'] >= 3]
+        print(f"8. Combinations with >= 3 samples: {len(sufficient_samples)} out of {len(sample_grouping)}")
+        print()
+    
+        if len(sufficient_samples) == 0:
+            print("ERROR: No combinations have sufficient samples (>=3)")
+            print("Sample count distribution:")
+            print(sample_grouping['count'].value_counts().sort_index())
+    
+        return config_col, unique_configs
+
+    def create_simple_convergence_plot(df):
+        """Simplified version to test basic functionality"""
+    
+        print("="*60)
+        print("SIMPLIFIED CONVERGENCE ANALYSIS")
+        print("="*60)
+    
+        # Find config column
+        config_col = None
+        for col in ['preconditioner_configs', 'preconditioner_config', 'preconditioner']:
+            if col in df.columns:
+                config_col = col
+                break
+    
+        if config_col is None:
+            print("ERROR: No config column found")
+            return None, None, None
+    
+        print(f"Using config column: {config_col}")
+    
+        # Calculate convergence rates (only is_converged==1 counts as success)
+        convergence_data = df.groupby(['problem_kind', config_col]).agg({
+            'is_converged': [lambda x: (x == 1).mean(), 'count']
+        }).round(4)
+    
+        convergence_data.columns = ['convergence_rate', 'sample_count']
+        convergence_data = convergence_data.reset_index()
+    
+        print(f"Total combinations before filtering: {len(convergence_data)}")
+    
+        # Filter combinations with at least 1 sample (relaxed requirement for debugging)
+        convergence_data = convergence_data[convergence_data['sample_count'] >= 1]
+    
+        print(f"Total combinations after filtering: {len(convergence_data)}")
+    
+        if len(convergence_data) == 0:
+            print("ERROR: No data left after filtering")
+            return None, None, None
+    
+        # Create simple Config labels
+        unique_configs = sorted(convergence_data[config_col].unique())
+        print(f"Unique configs: {len(unique_configs)}")
+    
+        config_to_label = {}
+        config_counter = 1
+    
+        for config in unique_configs:
+            print(f"Processing config: '{config}' (type: {type(config)})")
+        
+            # Check for None/none values more carefully
+            if pd.isna(config) or str(config).lower() == 'none':
+                config_to_label[config] = 'None'
+                print(f"  -> Mapped to: 'None'")
+            else:
+                config_to_label[config] = f'Config {config_counter}'
+                print(f"  -> Mapped to: 'Config {config_counter}'")
+                config_counter += 1
+    
+        convergence_data['config_label'] = convergence_data[config_col].map(config_to_label)
+    
+        print("\nMapping created:")
+        for orig, label in config_to_label.items():
+            print(f"  '{orig}' -> '{label}'")
+    
+        print(f"\nConvergence data shape: {convergence_data.shape}")
+        print("Sample of convergence data:")
+        print(convergence_data.head())
+    
+        # Return dummy stats for now
+        config_stats = pd.DataFrame({'avg_convergence': [0.5], 'config': ['test']})
+        problem_stats = pd.DataFrame({'avg_convergence': [0.5], 'problem_kind': ['test']})
+    
+        return convergence_data, config_stats, problem_stats
+
+
     return
 
 
 @app.cell
 def _():
+    # Usage:
+    # First run debug to understand the data
+    # config_col, unique_configs = debug_data_structure(df)
+
+    return
+
+
+@app.cell
+def _():
+    # Then try simplified version
+    # convergence_data, config_stats_, problem_stats = create_simple_convergence_plot(df)
     return
 
 
