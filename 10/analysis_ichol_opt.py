@@ -32,10 +32,11 @@ def _(plt):
 
 
 @app.cell
-def _(np, plt, sns):
+def _(np, plt, print_config_mapping_table, sns):
     def plot_convergence_by_preconditioner_config(df):
         """Visualize convergence rates by preconditioner configuration with line plots for each problem kind"""
-    
+
+        min_sample_count = 10
         # 1. Data preprocessing
         # Check for correct column name
         if 'preconditioner_configs' in df.columns:
@@ -45,30 +46,30 @@ def _(np, plt, sns):
         else:
             print("Warning: preconditioner_config column not found")
             return None, None, None
-    
+
         # Calculate convergence rates for each combination (only is_converged==1 counts as success)
         convergence_data = df.groupby(['problem_kind', config_col]).agg({
             'is_converged': [lambda x: (x == 1).mean(), 'count', lambda x: (x == 0).mean(), lambda x: (x == -1).mean()]
         }).round(4)
-    
+
         convergence_data.columns = ['convergence_rate', 'sample_count', 'max_iter_rate', 'ichol_failure_rate']
         convergence_data = convergence_data.reset_index()
-    
+
         # Filter out combinations with insufficient samples (minimum 3 samples)
-        convergence_data = convergence_data[convergence_data['sample_count'] >= 3]
-    
+        convergence_data = convergence_data[convergence_data['sample_count'] >= min_sample_count]
+
         print(f"Data Summary:")
         print(f"- Number of problem kinds: {convergence_data['problem_kind'].nunique()}")
         print(f"- Number of preconditioner configs: {convergence_data[config_col].nunique()}")
         print(f"- Valid combinations: {len(convergence_data)}")
         print(f"- Convergence rate calculation: (is_converged == 1) / total_samples")
         print(f"- is_converged values: 1=success, 0=max_iter_reached, -1=ichol_failure")
-    
+
         # Create index mapping for x-axis with "Config N" format (except for type=none -> None)
         unique_configs = sorted(convergence_data[config_col].unique())
         config_to_label = {}
         config_counter = 1
-    
+
         for config in unique_configs:
             # Check specifically for 'type=none' string
             if config == 'type=none':
@@ -76,113 +77,113 @@ def _(np, plt, sns):
             else:
                 config_to_label[config] = f'Config {config_counter}'
                 config_counter += 1
-    
+
         label_to_config = {label: config for config, label in config_to_label.items()}
         convergence_data['config_label'] = convergence_data[config_col].map(config_to_label)
-    
+
         # Sort by config label for consistent ordering (None first, then Config 1, 2, ...)
         convergence_data = convergence_data.sort_values('config_label', 
                                                        key=lambda x: x.map(lambda y: (y != 'None', y)))
-    
+
         # Set up color palette for problem kinds
         problem_kinds = convergence_data['problem_kind'].unique()
         colors = plt.cm.tab20(np.linspace(0, 1, len(problem_kinds)))
         color_map = dict(zip(problem_kinds, colors))
-    
+
         # Define line styles and markers for visual separation
         line_styles = ['-', '--', '-.', ':', '-', '--', '-.', ':', '-', '--']
         markers = ['o', 's', '^', 'D', 'v', '<', '>', 'p', '*', 'h', '+', 'x']
-    
+
         # Create separate figures for each plot
         plot_convergence_line_graph(convergence_data, config_to_label, problem_kinds, 
                                    color_map, line_styles, markers)
-    
+
         plot_sample_count_heatmap(df, config_col, config_to_label)
-    
+
         # Print configuration mapping table
         print_config_mapping_table(label_to_config)
-    
+
         # Statistical summaries and analysis
         config_stats, problem_stats = print_analysis_results(convergence_data, config_col)
-    
+
         return convergence_data, config_stats, problem_stats
 
     def plot_convergence_line_graph(convergence_data, config_to_label, problem_kinds, 
                                    color_map, line_styles, markers):
         """Create the convergence rate line graph with Config N labels"""
         fig, ax = plt.subplots(1, 1, figsize=(16, 10))
-    
+
         # Get unique config labels and create position mapping
         unique_labels = sorted(convergence_data['config_label'].unique(), 
                               key=lambda x: (x != 'None', x))
         label_positions = {label: i for i, label in enumerate(unique_labels)}
-    
+
         # Main line plot with visual separation techniques
         for i, problem_kind in enumerate(problem_kinds):
             data_subset = convergence_data[convergence_data['problem_kind'] == problem_kind]
-        
+
             # Sort data for proper line connections
             data_subset = data_subset.sort_values('config_label', 
                                                 key=lambda x: x.map(lambda y: (y != 'None', y)))
-        
+
             # Use config label positions for x-axis
             x_values = [label_positions[label] for label in data_subset['config_label']]
-        
+
             # Add small jitter to y-values to separate overlapping lines
             jitter_amount = 0.005  # Small offset
             jitter = np.random.uniform(-jitter_amount, jitter_amount, len(data_subset))
             y_values = data_subset['convergence_rate'] + jitter
-        
+
             # Cycle through line styles and markers
             line_style = line_styles[i % len(line_styles)]
             marker = markers[i % len(markers)]
-        
+
             # Vary line width slightly
             line_width = 2 + (i % 3) * 0.5
-        
+
             ax.plot(x_values, y_values, 
                     linestyle=line_style, marker=marker, label=problem_kind, 
                     color=color_map[problem_kind], linewidth=line_width, 
                     markersize=6, alpha=0.85, markerfacecolor='white', 
                     markeredgewidth=1.5)
-    
+
         ax.set_xlabel('Preconditioner Configuration (see mapping table below)', fontsize=12)
         ax.set_ylabel('Convergence Rate (is_converged == 1)', fontsize=12)
         ax.set_title('Convergence Rate by Preconditioner Configuration and Problem Kind', 
                     fontsize=16, fontweight='bold')
         ax.set_ylim(-0.02, 1.08)  # Extended range to show separated lines better
         ax.grid(True, alpha=0.3)
-    
+
         # Set x-axis ticks and labels to show Config N format
         ax.set_xticks(range(len(unique_labels)))
         ax.set_xticklabels(unique_labels, rotation=45, fontsize=10)
         ax.margins(x=0.01)  # Add small margin to prevent cutting off edge points
-    
+
         # Legend settings with better layout for many items
         if len(problem_kinds) > 10:
             ax.legend(bbox_to_anchor=(1.02, 1), loc='upper left', ncol=2, fontsize=9)
         else:
             ax.legend(bbox_to_anchor=(1.02, 1), loc='upper left', ncol=1, fontsize=10)
-    
+
         plt.tight_layout(pad=3.0)  # Add more padding to prevent label cutoff
         plt.show()
 
     def plot_sample_count_heatmap(df, config_col, config_to_label):
         """Create the sample count heatmap with Config N labels"""
         fig, ax = plt.subplots(1, 1, figsize=(16, 8))
-    
+
         # Sample count heatmap for validation with config labels
         sample_counts = df.groupby(['problem_kind', config_col]).size().reset_index(name='count')
         sample_counts['config_label'] = sample_counts[config_col].map(config_to_label)
-    
+
         # Create pivot table and ensure proper ordering of columns
         sample_pivot = sample_counts.pivot(index='problem_kind', columns='config_label', values='count').fillna(0)
-    
+
         # Reorder columns to put None first, then Config 1, Config 2, etc.
         cols = list(sample_pivot.columns)
         ordered_cols = sorted(cols, key=lambda x: (x != 'None', x))
         sample_pivot = sample_pivot[ordered_cols]
-    
+
         sns.heatmap(sample_pivot, annot=True, fmt='g', cmap='Blues', 
                     ax=ax, cbar_kws={'label': 'Sample Count'})
         ax.set_title('Sample Count by Problem Kind and Preconditioner Configuration', 
@@ -190,31 +191,9 @@ def _(np, plt, sns):
         ax.set_xlabel('Preconditioner Configuration (see mapping table below)', fontsize=12)
         ax.set_ylabel('Problem Kind', fontsize=12)
         ax.tick_params(axis='x', rotation=45, labelsize=10)
-    
+
         plt.tight_layout(pad=3.0)
         plt.show()
-
-    def print_config_mapping_table(label_to_config):
-        """Print the configuration label to name mapping table"""
-        print("\n" + "="*80)
-        print("PRECONDITIONER CONFIGURATION MAPPING TABLE")
-        print("="*80)
-        print(f"{'Label':<12} | {'Configuration'}")
-        print("-" * 80)
-    
-        # Sort labels: None first, then Config 1, Config 2, ...
-        sorted_labels = sorted(label_to_config.keys(), key=lambda x: (x != 'None', x))
-    
-        for label in sorted_labels:
-            config = label_to_config[label]
-            # Wrap long configurations for better readability
-            if len(config) > 65:
-                wrapped_config = config[:65] + "..."
-            else:
-                wrapped_config = config
-            print(f"{label:<12} | {wrapped_config}")
-    
-        print("="*80)
 
     def print_analysis_results(convergence_data, config_col):
         """Print statistical analysis results"""
@@ -230,7 +209,7 @@ def _(np, plt, sns):
                                'max_convergence', 'avg_max_iter_rate', 'avg_ichol_failure_rate', 'total_samples']
         config_stats = config_stats.reset_index().sort_values('avg_convergence', ascending=False)
         print(config_stats)
-    
+
         print("\n=== Statistics by Problem Kind ===")
         problem_stats = convergence_data.groupby('problem_kind').agg({
             'convergence_rate': ['mean', 'std', 'min', 'max'],
@@ -242,25 +221,25 @@ def _(np, plt, sns):
                                 'max_convergence', 'avg_max_iter_rate', 'avg_ichol_failure_rate', 'total_samples']
         problem_stats = problem_stats.reset_index().sort_values('avg_convergence', ascending=False)
         print(problem_stats)
-    
+
         # 4. Extract notable combinations
         print("\n=== Notable Combinations ===")
-    
+
         # Best convergence combination
         best_combo = convergence_data.loc[convergence_data['convergence_rate'].idxmax()]
         print(f"Best convergence: {best_combo['problem_kind']} + {best_combo[config_col]} = {best_combo['convergence_rate']:.4f}")
-    
+
         # Worst convergence combination
         worst_combo = convergence_data.loc[convergence_data['convergence_rate'].idxmin()]
         print(f"Worst convergence: {worst_combo['problem_kind']} + {worst_combo[config_col]} = {worst_combo['convergence_rate']:.4f}")
-    
+
         # Configurations with high ichol failure rates
         high_ichol_failure = convergence_data[convergence_data['ichol_failure_rate'] > 0.1]
         if len(high_ichol_failure) > 0:
             print(f"\nConfigurations with high ichol failure rates (>10%):")
             for _, row in high_ichol_failure.iterrows():
                 print(f"  {row['problem_kind']} + {row[config_col]}: {row['ichol_failure_rate']:.3f}")
-    
+
         # Most effective problem kind for each preconditioner config
         print("\nMost effective problem kind for each preconditioner config:")
         for config in convergence_data[config_col].unique():
@@ -268,7 +247,7 @@ def _(np, plt, sns):
             if len(config_data) > 0:
                 best_problem = config_data.loc[config_data['convergence_rate'].idxmax()]
                 print(f"  {config}: {best_problem['problem_kind']} ({best_problem['convergence_rate']:.4f})")
-    
+
         return config_stats, problem_stats
     return (plot_convergence_by_preconditioner_config,)
 
@@ -290,6 +269,501 @@ def _(Filter, List, SuiteSparseDownloader):
     return (add_problem_kind,)
 
 
+@app.cell
+def _(np, plt):
+    def create_config_labels(config_list):
+        """
+        Config名を "Config N" 形式にラベリングする関数
+        'type=none' は 'None' として特別扱い
+        """
+        unique_configs = sorted(config_list)
+        config_to_label = {}
+        label_to_config = {}
+        config_counter = 1
+    
+        for config in unique_configs:
+            # Check specifically for 'type=none' string
+            if config == 'type=none':
+                config_to_label[config] = 'None'
+                label_to_config['None'] = config
+            else:
+                label = f'Config {config_counter}'
+                config_to_label[config] = label
+                label_to_config[label] = config
+                config_counter += 1
+    
+        return config_to_label, label_to_config
+
+    def print_config_mapping_table(label_to_config):
+        """設定ラベルと実際の設定名のマッピングテーブルを出力"""
+        print("\n" + "="*80)
+        print("PRECONDITIONER CONFIGURATION MAPPING TABLE")
+        print("="*80)
+        print(f"{'Label':<12} | {'Configuration'}")
+        print("-" * 80)
+
+        # Sort labels: None first, then Config 1, Config 2, ...
+        sorted_labels = sorted(label_to_config.keys(), key=lambda x: (x != 'None', x))
+
+        for label in sorted_labels:
+            config = label_to_config[label]
+            # Wrap long configurations for better readability
+            if len(config) > 65:
+                wrapped_config = config[:65] + "..."
+            else:
+                wrapped_config = config
+            print(f"{label:<12} | {wrapped_config}")
+
+        print("="*80)
+
+    def create_condition_number_groups(df):
+        """条件数に基づいて3つのグループに分割"""
+        df = df.copy()
+
+        # 条件数グループの定義
+        conditions = [
+            (df['condition_number'] >= 1.0) & (df['condition_number'] < 1.0e+5),
+            (df['condition_number'] >= 1.0e+5) & (df['condition_number'] < 1.0e+10), 
+            (df['condition_number'] >= 1.0e+10)
+        ]
+
+        choices = ['low_cond', 'mid_cond', 'high_cond']
+
+        df['condition_group'] = np.select(conditions, choices, default='unknown')
+
+        return df
+
+    def plot_convergence_by_condition_number(df):
+        """条件数グループ別の収束性を詳細分析・可視化（ichol style）"""
+    
+        # 最小サンプル数
+        min_sample_count = 10
+    
+        # Check for correct column name
+        if 'preconditioner_configs' in df.columns:
+            config_col = 'preconditioner_configs'
+        elif 'preconditioner_config' in df.columns:
+            config_col = 'preconditioner_config'
+        else:
+            print("Warning: preconditioner_config column not found")
+            return None, None, None
+
+        # 条件数グループを作成
+        df_grouped = create_condition_number_groups(df)
+        df_grouped = df_grouped[df_grouped['condition_group'] != 'unknown']
+
+        # グループの順序を定義
+        condition_order = ['low_cond', 'mid_cond', 'high_cond']
+        color_map = {'low_cond': '#1f77b4', 'mid_cond': '#ff7f0e', 'high_cond': '#2ca02c'}
+
+        print(f"Data Summary:")
+        print(f"- Dataset shape after condition grouping: {df_grouped.shape}")
+        group_counts = df_grouped['condition_group'].value_counts()
+        for group in condition_order:  # 順序通りに表示
+            if group in group_counts:
+                print(f"- {group}: {group_counts[group]} samples")
+        print()
+
+        # Config labeling処理
+        unique_configs = df_grouped[config_col].unique()
+        config_to_label, label_to_config = create_config_labels(unique_configs)
+
+        # 4つのサブプロットを作成
+        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
+
+        # 1. 収束率の比較（Config labelingを適用）
+        convergence_by_group = df_grouped.groupby(['condition_group', config_col]).agg({
+            'is_converged': [lambda x: (x == 1).mean(), 'count', lambda x: (x == 0).mean(), lambda x: (x == -1).mean()]
+        }).round(4)
+        convergence_by_group.columns = ['convergence_rate', 'sample_count', 'max_iter_rate', 'ichol_failure_rate']
+        convergence_by_group = convergence_by_group.reset_index()
+
+        # 最小サンプル数でフィルタリング
+        convergence_by_group = convergence_by_group[convergence_by_group['sample_count'] >= min_sample_count]
+    
+        print(f"Valid combinations (>={min_sample_count} samples): {len(convergence_by_group)}")
+
+        # Config labelを追加
+        convergence_by_group['config_label'] = convergence_by_group[config_col].map(config_to_label)
+
+        # 収束率をピボットして順序を制御
+        convergence_pivot = convergence_by_group.pivot(
+            index='config_label', 
+            columns='condition_group', 
+            values='convergence_rate'
+        ).fillna(0)
+
+        # 列と行の順序を指定
+        convergence_pivot = convergence_pivot.reindex(columns=condition_order, fill_value=0)
+    
+        # Config labelの順序を制御 (None first, then Config 1, Config 2, ...)
+        config_labels = sorted(convergence_pivot.index, key=lambda x: (x != 'None', x))
+        convergence_pivot = convergence_pivot.reindex(config_labels)
+
+        convergence_pivot.plot(kind='bar', ax=ax1, width=0.8, color=[color_map[col] for col in convergence_pivot.columns])
+        ax1.set_title('Convergence Rate by Condition Group', fontweight='bold', fontsize=14)
+        ax1.set_ylabel('Convergence Rate (is_converged == 1)', fontsize=12)
+        ax1.set_xlabel('Preconditioner Configuration (see mapping table below)', fontsize=12)
+        ax1.legend(title='Condition Group')
+        ax1.tick_params(axis='x', rotation=45)
+        ax1.grid(True, alpha=0.3)
+
+        # 2. 反復回数の分布比較（ボックスプロット）
+        converged_only = df_grouped[df_grouped['is_converged'] == 1]
+
+        iteration_data = []
+        labels = []
+        for group in condition_order:
+            group_data = converged_only[converged_only['condition_group'] == group]
+            if len(group_data) > 0:
+                iteration_data.append(group_data['iter_final'])
+                labels.append(f'{group}\n(n={len(group_data)})')
+            else:
+                iteration_data.append([])
+                labels.append(f'{group}\n(n=0)')
+
+        bp = ax2.boxplot(iteration_data, labels=labels, patch_artist=True)
+
+        # ボックスプロットの色を設定
+        for patch, group in zip(bp['boxes'], condition_order):
+            patch.set_facecolor(color_map[group])
+            patch.set_alpha(0.7)
+
+        ax2.set_yscale('log')  # 対数スケールで見やすく
+        ax2.set_title('Iteration Count by Condition Group', fontweight='bold', fontsize=14)
+        ax2.set_ylabel('Iteration Count (log scale)', fontsize=12)
+        ax2.grid(True, alpha=0.3)
+
+        # 3. 条件数 vs 反復回数の散布図
+        for group in condition_order:
+            group_data = converged_only[converged_only['condition_group'] == group]
+            if len(group_data) > 0:
+                ax3.scatter(group_data['condition_number'], group_data['iter_final'], 
+                           c=color_map[group], label=group, alpha=0.6, s=20)
+
+        ax3.set_xscale('log')
+        ax3.set_yscale('log')
+        ax3.set_title('Condition Number vs Iteration Count', fontweight='bold', fontsize=14)
+        ax3.set_xlabel('Condition Number (log scale)', fontsize=12)
+        ax3.set_ylabel('Iteration Count (log scale)', fontsize=12)
+        ax3.legend()
+        ax3.grid(True, alpha=0.3)
+
+        # 4. 計算時間の比較
+        solve_time_data = []
+        time_labels = []
+        for group in condition_order:
+            group_data = converged_only[converged_only['condition_group'] == group]
+            if len(group_data) > 0:
+                solve_time_data.append(group_data['solve_time'])
+                time_labels.append(f'{group}\n(n={len(group_data)})')
+            else:
+                solve_time_data.append([])
+                time_labels.append(f'{group}\n(n=0)')
+
+        bp2 = ax4.boxplot(solve_time_data, labels=time_labels, patch_artist=True)
+
+        # ボックスプロットの色を設定
+        for patch, group in zip(bp2['boxes'], condition_order):
+            patch.set_facecolor(color_map[group])
+            patch.set_alpha(0.7)
+
+        ax4.set_yscale('log')
+        ax4.set_title('Solve Time by Condition Group', fontweight='bold', fontsize=14)
+        ax4.set_ylabel('Solve Time (s, log scale)', fontsize=12)
+        ax4.grid(True, alpha=0.3)
+
+        plt.tight_layout(pad=3.0)
+        plt.show()
+
+        # Configuration mapping table を出力
+        print_config_mapping_table(label_to_config)
+
+        # 統計サマリーを順序通りに出力
+        print("\n=== Convergence Statistics by Condition Group ===")
+        group_stats = df_grouped.groupby('condition_group').agg({
+            'is_converged': [lambda x: (x == 1).mean(), lambda x: (x == 0).mean(), lambda x: (x == -1).mean()],
+            'matrix_name': 'count'
+        }).round(4)
+        group_stats.columns = ['converged_rate', 'not_converged_rate', 'failed_rate', 'total_count']
+        # 順序を制御して表示
+        group_stats = group_stats.reindex(condition_order)
+        print(group_stats)
+
+        print("\n=== Iteration Statistics for Converged Cases ===")
+        iter_stats = converged_only.groupby('condition_group')['iter_final'].agg([
+            'count', 'mean', 'std', 'median', 'min', 'max'
+        ]).round(2)
+        # 順序を制御して表示
+        iter_stats = iter_stats.reindex(condition_order)
+        print(iter_stats)
+
+        # Config別の統計
+        print("\n=== Statistics by Preconditioner Configuration ===")
+        config_stats = convergence_by_group.groupby(config_col).agg({
+            'convergence_rate': ['mean', 'std', 'min', 'max'],
+            'max_iter_rate': 'mean',
+            'ichol_failure_rate': 'mean',
+            'sample_count': 'sum'
+        }).round(4)
+        config_stats.columns = ['avg_convergence', 'std_convergence', 'min_convergence', 
+                               'max_convergence', 'avg_max_iter_rate', 'avg_ichol_failure_rate', 'total_samples']
+        config_stats = config_stats.reset_index().sort_values('avg_convergence', ascending=False)
+        print(config_stats)
+
+        # Notable combinations
+        print("\n=== Notable Combinations ===")
+    
+        # Best convergence combination
+        best_combo = convergence_by_group.loc[convergence_by_group['convergence_rate'].idxmax()]
+        print(f"Best convergence: {best_combo['condition_group']} + {best_combo['config_label']} = {best_combo['convergence_rate']:.4f}")
+
+        # Worst convergence combination
+        worst_combo = convergence_by_group.loc[convergence_by_group['convergence_rate'].idxmin()]
+        print(f"Worst convergence: {worst_combo['condition_group']} + {worst_combo['config_label']} = {worst_combo['convergence_rate']:.4f}")
+
+        # High ichol failure rates
+        high_ichol_failure = convergence_by_group[convergence_by_group['ichol_failure_rate'] > 0.1]
+        if len(high_ichol_failure) > 0:
+            print(f"\nCombinations with high ichol failure rates (>10%):")
+            for _, row in high_ichol_failure.iterrows():
+                print(f"  {row['condition_group']} + {row['config_label']}: {row['ichol_failure_rate']:.3f}")
+
+        return df_grouped, convergence_by_group
+    return (
+        create_condition_number_groups,
+        create_config_labels,
+        plot_convergence_by_condition_number,
+        print_config_mapping_table,
+    )
+
+
+@app.cell
+def _(
+    create_condition_number_groups,
+    create_config_labels,
+    plt,
+    print_config_mapping_table,
+):
+    def plot_convergence_by_condition_number_normalized(df):
+        """条件数グループ別の収束性を詳細分析・可視化（正規化反復回数版）"""
+    
+        # 最小サンプル数
+        min_sample_count = 10
+    
+        # Check for correct column name
+        if 'preconditioner_configs' in df.columns:
+            config_col = 'preconditioner_configs'
+        elif 'preconditioner_config' in df.columns:
+            config_col = 'preconditioner_config'
+        else:
+            print("Warning: preconditioner_config column not found")
+            return None, None
+
+        # 条件数グループを作成
+        df_grouped = create_condition_number_groups(df)
+        df_grouped = df_grouped[df_grouped['condition_group'] != 'unknown']
+
+        # 正規化された反復回数を計算（収束したケースのみ）
+        converged_only = df_grouped[df_grouped['is_converged'] == 1].copy()
+        converged_only['iter_ratio'] = converged_only['iter_final'] / converged_only['matrix_size']
+
+        # グループの順序を定義
+        condition_order = ['low_cond', 'mid_cond', 'high_cond']
+        color_map = {'low_cond': '#1f77b4', 'mid_cond': '#ff7f0e', 'high_cond': '#2ca02c'}
+
+        print(f"Data Summary (Normalized Iteration Analysis):")
+        print(f"- Dataset shape after condition grouping: {df_grouped.shape}")
+        print(f"- Converged cases for analysis: {len(converged_only)}")
+        group_counts = df_grouped['condition_group'].value_counts()
+        for group in condition_order:  # 順序通りに表示
+            if group in group_counts:
+                converged_count = len(converged_only[converged_only['condition_group'] == group])
+                print(f"- {group}: {group_counts[group]} total samples ({converged_count} converged)")
+        print()
+
+        # Config labeling処理
+        unique_configs = df_grouped[config_col].unique()
+        config_to_label, label_to_config = create_config_labels(unique_configs)
+
+        # 4つのサブプロットを作成
+        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
+
+        # 1. 収束率の比較（Config labelingを適用）- 既存と同じ
+        convergence_by_group = df_grouped.groupby(['condition_group', config_col]).agg({
+            'is_converged': [lambda x: (x == 1).mean(), 'count', lambda x: (x == 0).mean(), lambda x: (x == -1).mean()]
+        }).round(4)
+        convergence_by_group.columns = ['convergence_rate', 'sample_count', 'max_iter_rate', 'ichol_failure_rate']
+        convergence_by_group = convergence_by_group.reset_index()
+
+        # 最小サンプル数でフィルタリング
+        convergence_by_group = convergence_by_group[convergence_by_group['sample_count'] >= min_sample_count]
+    
+        print(f"Valid combinations (>={min_sample_count} samples): {len(convergence_by_group)}")
+
+        # Config labelを追加
+        convergence_by_group['config_label'] = convergence_by_group[config_col].map(config_to_label)
+
+        # 収束率をピボットして順序を制御
+        convergence_pivot = convergence_by_group.pivot(
+            index='config_label', 
+            columns='condition_group', 
+            values='convergence_rate'
+        ).fillna(0)
+
+        # 列と行の順序を指定
+        convergence_pivot = convergence_pivot.reindex(columns=condition_order, fill_value=0)
+    
+        # Config labelの順序を制御 (None first, then Config 1, Config 2, ...)
+        config_labels = sorted(convergence_pivot.index, key=lambda x: (x != 'None', x))
+        convergence_pivot = convergence_pivot.reindex(config_labels)
+
+        convergence_pivot.plot(kind='bar', ax=ax1, width=0.8, color=[color_map[col] for col in convergence_pivot.columns])
+        ax1.set_title('Convergence Rate by Condition Group', fontweight='bold', fontsize=14)
+        ax1.set_ylabel('Convergence Rate (is_converged == 1)', fontsize=12)
+        ax1.set_xlabel('Preconditioner Configuration (see mapping table below)', fontsize=12)
+        ax1.legend(title='Condition Group')
+        ax1.tick_params(axis='x', rotation=45)
+        ax1.grid(True, alpha=0.3)
+
+        # 2. 正規化反復回数の分布比較（ボックスプロット）
+        iteration_data = []
+        labels = []
+        for group in condition_order:
+            group_data = converged_only[converged_only['condition_group'] == group]
+            if len(group_data) > 0:
+                iteration_data.append(group_data['iter_ratio'])
+                labels.append(f'{group}\n(n={len(group_data)})')
+            else:
+                iteration_data.append([])
+                labels.append(f'{group}\n(n=0)')
+
+        bp = ax2.boxplot(iteration_data, labels=labels, patch_artist=True)
+
+        # ボックスプロットの色を設定
+        for patch, group in zip(bp['boxes'], condition_order):
+            patch.set_facecolor(color_map[group])
+            patch.set_alpha(0.7)
+
+        ax2.set_yscale('log')  # 対数スケールで見やすく
+        ax2.set_title('Normalized Iteration Count by Condition Group', fontweight='bold', fontsize=14)
+        ax2.set_ylabel('iter_final / matrix_size (log scale)', fontsize=12)
+        ax2.grid(True, alpha=0.3)
+    
+        # 参考線 (y=1.0) を追加
+        ax2.axhline(y=1.0, color='gray', linestyle='--', alpha=0.7, linewidth=2, label='Reference (y=1.0)')
+
+        # 3. 条件数 vs 正規化反復回数の散布図
+        for group in condition_order:
+            group_data = converged_only[converged_only['condition_group'] == group]
+            if len(group_data) > 0:
+                ax3.scatter(group_data['condition_number'], group_data['iter_ratio'], 
+                           c=color_map[group], label=group, alpha=0.6, s=20)
+
+        ax3.set_xscale('log')
+        ax3.set_yscale('log')
+        ax3.set_title('Condition Number vs Normalized Iteration Count', fontweight='bold', fontsize=14)
+        ax3.set_xlabel('Condition Number (log scale)', fontsize=12)
+        ax3.set_ylabel('iter_final / matrix_size (log scale)', fontsize=12)
+        ax3.legend()
+        ax3.grid(True, alpha=0.3)
+    
+        # 参考線 (y=1.0) を追加
+        ax3.axhline(y=1.0, color='gray', linestyle='--', alpha=0.7, linewidth=1)
+
+        # 4. 計算時間の比較（既存と同じ）
+        solve_time_data = []
+        time_labels = []
+        for group in condition_order:
+            group_data = converged_only[converged_only['condition_group'] == group]
+            if len(group_data) > 0:
+                solve_time_data.append(group_data['solve_time'])
+                time_labels.append(f'{group}\n(n={len(group_data)})')
+            else:
+                solve_time_data.append([])
+                time_labels.append(f'{group}\n(n=0)')
+
+        bp2 = ax4.boxplot(solve_time_data, labels=time_labels, patch_artist=True)
+
+        # ボックスプロットの色を設定
+        for patch, group in zip(bp2['boxes'], condition_order):
+            patch.set_facecolor(color_map[group])
+            patch.set_alpha(0.7)
+
+        ax4.set_yscale('log')
+        ax4.set_title('Solve Time by Condition Group', fontweight='bold', fontsize=14)
+        ax4.set_ylabel('Solve Time (s, log scale)', fontsize=12)
+        ax4.grid(True, alpha=0.3)
+
+        plt.tight_layout(pad=3.0)
+        plt.show()
+
+        # Configuration mapping table を出力
+        print_config_mapping_table(label_to_config)
+
+        # 統計サマリーを順序通りに出力
+        print("\n=== Convergence Statistics by Condition Group ===")
+        group_stats = df_grouped.groupby('condition_group').agg({
+            'is_converged': [lambda x: (x == 1).mean(), lambda x: (x == 0).mean(), lambda x: (x == -1).mean()],
+            'matrix_name': 'count'
+        }).round(4)
+        group_stats.columns = ['converged_rate', 'not_converged_rate', 'failed_rate', 'total_count']
+        # 順序を制御して表示
+        group_stats = group_stats.reindex(condition_order)
+        print(group_stats)
+
+        print("\n=== Normalized Iteration Statistics for Converged Cases ===")
+        iter_stats = converged_only.groupby('condition_group')['iter_ratio'].agg([
+            'count', 'mean', 'std', 'median', 'min', 'max'
+        ]).round(4)
+        # 順序を制御して表示
+        iter_stats = iter_stats.reindex(condition_order)
+        print(iter_stats)
+
+        # Config別の統計
+        print("\n=== Statistics by Preconditioner Configuration ===")
+        config_stats = convergence_by_group.groupby(config_col).agg({
+            'convergence_rate': ['mean', 'std', 'min', 'max'],
+            'max_iter_rate': 'mean',
+            'ichol_failure_rate': 'mean',
+            'sample_count': 'sum'
+        }).round(4)
+        config_stats.columns = ['avg_convergence', 'std_convergence', 'min_convergence', 
+                               'max_convergence', 'avg_max_iter_rate', 'avg_ichol_failure_rate', 'total_samples']
+        config_stats = config_stats.reset_index().sort_values('avg_convergence', ascending=False)
+        print(config_stats)
+
+        # Notable combinations
+        print("\n=== Notable Combinations ===")
+    
+        # Best convergence combination
+        best_combo = convergence_by_group.loc[convergence_by_group['convergence_rate'].idxmax()]
+        print(f"Best convergence: {best_combo['condition_group']} + {best_combo['config_label']} = {best_combo['convergence_rate']:.4f}")
+
+        # Worst convergence combination
+        worst_combo = convergence_by_group.loc[convergence_by_group['convergence_rate'].idxmin()]
+        print(f"Worst convergence: {worst_combo['condition_group']} + {worst_combo['config_label']} = {worst_combo['convergence_rate']:.4f}")
+
+        # High ichol failure rates
+        high_ichol_failure = convergence_by_group[convergence_by_group['ichol_failure_rate'] > 0.1]
+        if len(high_ichol_failure) > 0:
+            print(f"\nCombinations with high ichol failure rates (>10%):")
+            for _, row in high_ichol_failure.iterrows():
+                print(f"  {row['condition_group']} + {row['config_label']}: {row['ichol_failure_rate']:.3f}")
+
+        # Best normalized iteration performance by condition group
+        print(f"\nBest normalized iteration performance by condition group:")
+        for group in condition_order:
+            group_data = converged_only[converged_only['condition_group'] == group]
+            if len(group_data) > 0:
+                best_ratio = group_data['iter_ratio'].min()
+                best_matrix = group_data[group_data['iter_ratio'] == best_ratio]['matrix_name'].iloc[0]
+                print(f"  {group}: {best_ratio:.4f} (matrix: {best_matrix})")
+
+        return df_grouped, convergence_by_group
+    return (plot_convergence_by_condition_number_normalized,)
+
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""## Check Data""")
@@ -297,8 +771,14 @@ def _(mo):
 
 
 @app.cell
-def _(pd):
+async def _(add_problem_kind, pd):
     df = pd.read_csv("cmp_ichol_opt_results.csv")
+    cond_num_df = pd.read_csv("cond_spd_0-50000.csv")
+
+    await add_problem_kind(df)
+    df = df.merge(cond_num_df[["matrix_name", "condition_number"]], 
+                  on="matrix_name", 
+                  how="left")
     return (df,)
 
 
@@ -358,8 +838,8 @@ def _(configs_list):
 
 
 @app.cell
-async def _(add_problem_kind, df):
-    await add_problem_kind(df)
+def _(df):
+    df
     return
 
 
@@ -641,27 +1121,35 @@ def _(mo):
 @app.cell
 def _(df):
     # FUTURE WORK のために, top2 の config (michol差) で ichol が失敗している行列名を出す
+    config_none="type=none"
     config_best = "type=ic;ictype=ict;droptol=0.001;michol=on;diagcomp=max(sum(abs(A),2)./diag(A))-2"
     config_best_without_michol = "type=ic;ictype=ict;droptol=0.001;diagcomp=max(sum(abs(A),2)./diag(A))-2"
 
+    filtered_df_none = df[df["preconditioner_configs"] == config_none]
     filtered_df_config_best = df[df["preconditioner_configs"] == config_best]
     filtered_df_config_best_without_michol = df[df["preconditioner_configs"] == config_best_without_michol]
 
+    not_converged_df_none = filtered_df_none[filtered_df_none["is_converged"] == 0]
     failed_ichol_config_best = filtered_df_config_best[filtered_df_config_best["is_converged"] == -1]
     failed_ichol_config_best_without_michol = filtered_df_config_best_without_michol[filtered_df_config_best_without_michol["is_converged"] == -1]
 
+    not_converged_df_none_matrix_names = not_converged_df_none["matrix_name"].unique()
     failed_ichol_config_best_matrix_names = failed_ichol_config_best["matrix_name"].unique()
     failed_ichol_config_best_without_michol_matrix_names = failed_ichol_config_best_without_michol["matrix_name"].unique()
 
     print("COUNT:")
+    print(f"not_converged_none: {not_converged_df_none_matrix_names.shape[0]}")
     print(f"failed_ichol_config_best_matrix_names: {failed_ichol_config_best_matrix_names.shape[0]}")
     print(f"failed_ichol_config_best_without_michol_matrix_names: {failed_ichol_config_best_without_michol_matrix_names.shape[0]}")
 
     failed_ichol_all_cases = set(failed_ichol_config_best_without_michol_matrix_names) & set(failed_ichol_config_best_matrix_names)
-    print(len(failed_ichol_all_cases))
+    failed_ichol_none_cases = set(not_converged_df_none_matrix_names) & set(failed_ichol_config_best_without_michol_matrix_names) & set(failed_ichol_config_best_matrix_names)
+    print(f"ichol のbest config および best config without michol の失敗している COUNT: {len(failed_ichol_all_cases)}")
+    print(f"none も含めたときのbest および best without michol の失敗している COUNT: {len(failed_ichol_none_cases)}")
 
     print("------------------------------------------------------------------------------------------------------------------------")
     print(failed_ichol_all_cases)
+    print(failed_ichol_none_cases)
     return
 
 
@@ -1036,167 +1524,14 @@ def _(df, plot_convergence_by_preconditioner_config):
 
 
 @app.cell
-def _(pd):
-    def debug_data_structure(df):
-        """Debug function to check data structure and identify issues"""
-    
-        print("="*60)
-        print("DEBUGGING DATA STRUCTURE")
-        print("="*60)
-    
-        # 1. Check columns
-        print("1. Available columns:")
-        print(df.columns.tolist())
-        print()
-    
-        # 2. Check for preconditioner config column
-        possible_config_cols = ['preconditioner_configs', 'preconditioner_config', 'preconditioner']
-        config_col = None
-    
-        for col in possible_config_cols:
-            if col in df.columns:
-                config_col = col
-                print(f"2. Found config column: '{config_col}'")
-                break
-    
-        if config_col is None:
-            print("2. ERROR: No preconditioner config column found!")
-            print("   Available columns:", df.columns.tolist())
-            return
-    
-        # 3. Check unique values in config column
-        unique_configs = df[config_col].unique()
-        print(f"3. Number of unique configurations: {len(unique_configs)}")
-        print("   First 10 configurations:")
-        for i, config in enumerate(unique_configs[:10]):
-            print(f"   {i+1}: '{config}' (type: {type(config)})")
-        print()
-    
-        # 4. Check for 'none' values
-        none_variants = df[config_col].str.lower().value_counts().head(10) if df[config_col].dtype == 'object' else "Not string type"
-        print("4. Config value frequency (first 10):")
-        print(none_variants)
-        print()
-    
-        # 5. Check is_converged values
-        print("5. is_converged value counts:")
-        print(df['is_converged'].value_counts().sort_index())
-        print()
-    
-        # 6. Check problem_kind values
-        print("6. problem_kind unique values:")
-        print(df['problem_kind'].unique())
-        print()
-    
-        # 7. Sample data grouping
-        print("7. Sample grouping (first 5 combinations):")
-        sample_grouping = df.groupby(['problem_kind', config_col]).size().reset_index(name='count')
-        print(sample_grouping.head())
-        print()
-    
-        # 8. Check for minimum sample requirements
-        sufficient_samples = sample_grouping[sample_grouping['count'] >= 3]
-        print(f"8. Combinations with >= 3 samples: {len(sufficient_samples)} out of {len(sample_grouping)}")
-        print()
-    
-        if len(sufficient_samples) == 0:
-            print("ERROR: No combinations have sufficient samples (>=3)")
-            print("Sample count distribution:")
-            print(sample_grouping['count'].value_counts().sort_index())
-    
-        return config_col, unique_configs
-
-    def create_simple_convergence_plot(df):
-        """Simplified version to test basic functionality"""
-    
-        print("="*60)
-        print("SIMPLIFIED CONVERGENCE ANALYSIS")
-        print("="*60)
-    
-        # Find config column
-        config_col = None
-        for col in ['preconditioner_configs', 'preconditioner_config', 'preconditioner']:
-            if col in df.columns:
-                config_col = col
-                break
-    
-        if config_col is None:
-            print("ERROR: No config column found")
-            return None, None, None
-    
-        print(f"Using config column: {config_col}")
-    
-        # Calculate convergence rates (only is_converged==1 counts as success)
-        convergence_data = df.groupby(['problem_kind', config_col]).agg({
-            'is_converged': [lambda x: (x == 1).mean(), 'count']
-        }).round(4)
-    
-        convergence_data.columns = ['convergence_rate', 'sample_count']
-        convergence_data = convergence_data.reset_index()
-    
-        print(f"Total combinations before filtering: {len(convergence_data)}")
-    
-        # Filter combinations with at least 1 sample (relaxed requirement for debugging)
-        convergence_data = convergence_data[convergence_data['sample_count'] >= 1]
-    
-        print(f"Total combinations after filtering: {len(convergence_data)}")
-    
-        if len(convergence_data) == 0:
-            print("ERROR: No data left after filtering")
-            return None, None, None
-    
-        # Create simple Config labels
-        unique_configs = sorted(convergence_data[config_col].unique())
-        print(f"Unique configs: {len(unique_configs)}")
-    
-        config_to_label = {}
-        config_counter = 1
-    
-        for config in unique_configs:
-            print(f"Processing config: '{config}' (type: {type(config)})")
-        
-            # Check for None/none values more carefully
-            if pd.isna(config) or str(config).lower() == 'none':
-                config_to_label[config] = 'None'
-                print(f"  -> Mapped to: 'None'")
-            else:
-                config_to_label[config] = f'Config {config_counter}'
-                print(f"  -> Mapped to: 'Config {config_counter}'")
-                config_counter += 1
-    
-        convergence_data['config_label'] = convergence_data[config_col].map(config_to_label)
-    
-        print("\nMapping created:")
-        for orig, label in config_to_label.items():
-            print(f"  '{orig}' -> '{label}'")
-    
-        print(f"\nConvergence data shape: {convergence_data.shape}")
-        print("Sample of convergence data:")
-        print(convergence_data.head())
-    
-        # Return dummy stats for now
-        config_stats = pd.DataFrame({'avg_convergence': [0.5], 'config': ['test']})
-        problem_stats = pd.DataFrame({'avg_convergence': [0.5], 'problem_kind': ['test']})
-    
-        return convergence_data, config_stats, problem_stats
-
-
+def _(df, plot_convergence_by_condition_number):
+    _, _ = plot_convergence_by_condition_number(df)
     return
 
 
 @app.cell
-def _():
-    # Usage:
-    # First run debug to understand the data
-    # config_col, unique_configs = debug_data_structure(df)
-
-    return
-
-
-@app.cell
-def _():
-    # Then try simplified version
-    # convergence_data, config_stats_, problem_stats = create_simple_convergence_plot(df)
+def _(df, plot_convergence_by_condition_number_normalized):
+    _, _ = plot_convergence_by_condition_number_normalized(df)
     return
 
 
