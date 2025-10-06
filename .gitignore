@@ -2,3 +2,7 @@
 build/
 check_significant_digits.dSYM/
 *.exe
+**/.venv
+**/__pycache__
+**/inputs/*.csv
+**/outputs/*.svg
