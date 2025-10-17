@@ -194,7 +194,13 @@ def plot_solve_status_ratio_by_prec_label(
     output_dir.mkdir(parents=True, exist_ok=True)
     target_filename = output_filename or f"{title}.svg"
     output_path = output_dir / target_filename
-    plt.savefig(output_path, format="svg")
+
+    savefig_kwargs: dict[str, str] = {}
+    file_format = output_path.suffix.lstrip(".").lower()
+    if file_format:
+        savefig_kwargs["format"] = file_format
+
+    plt.savefig(output_path, **savefig_kwargs)
     plt.close(fig)
 
     return output_path
@@ -254,7 +260,7 @@ def plot_by_condition_number_ranges(
 
         label = category_labels[category]
         title = f"{base_title} - {label}"
-        filename = f"{base_title.replace(' ', '_')}_{category}.svg"
+        filename = f"{base_title.replace(' ', '_').lower()}_{category}.svg"
 
         print(f"Generating plot for {category}: {len(df_subset)} rows")
 
