@@ -4,5 +4,6 @@ check_significant_digits.dSYM/
 *.exe
 **/.venv
 **/__pycache__
+**/.*cache
 **/inputs/*.csv
 **/outputs/*.svg
