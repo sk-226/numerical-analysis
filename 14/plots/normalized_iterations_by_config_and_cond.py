@@ -7,6 +7,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+if __package__ in {None, ""}:
+    import sys
+
+    # Allow running the module directly via `python plots/...py` by adding project root to path.
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 from plots.convergence_rate_by_config_and_cond import categorize_by_condition_number
 from utils.detect_preconditioner_columns import detect_preconditioner_columns
 
@@ -133,7 +139,12 @@ def _plot_category_boxplot(
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / output_name_template.format(category=category_key)
 
-    plt.savefig(output_path, format="svg")
+    savefig_kwargs: Dict[str, str] = {}
+    file_format = output_path.suffix.lstrip(".").lower()
+    if file_format:
+        savefig_kwargs["format"] = file_format
+
+    plt.savefig(output_path, **savefig_kwargs)
     plt.close(fig)
 
     print(

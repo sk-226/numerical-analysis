@@ -5,6 +5,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+if __package__ in {None, ""}:
+    import sys
+
+    # Allow running the module directly via `python plots/...py` by adding project root to path.
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 from utils.detect_preconditioner_columns import detect_preconditioner_columns
 
 PathLike = Union[str, Path]
