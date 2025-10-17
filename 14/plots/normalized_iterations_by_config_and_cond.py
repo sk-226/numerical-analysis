@@ -161,7 +161,15 @@ def _plot_category_boxplot(
         ax.set_xlim(0, x_max)
         ax.grid(**grid_kwargs)
 
-    ax.axvline(1.0, linestyle="--", color="gray", alpha=0.6)
+    # Highlight theoretical CG completion at n iterations (0.5 under max_iters = 2n)
+    ax.axvline(
+        0.5,
+        linestyle=":",
+        color="tab:red",
+        alpha=0.85,
+        linewidth=1.6,
+        label="n iterations (0.5)",
+    )
 
     plt.tight_layout()
 
