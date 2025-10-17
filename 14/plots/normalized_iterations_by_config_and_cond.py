@@ -82,6 +82,9 @@ def _plot_category_boxplot(
     output_dir: PathLike,
     output_name_template: str,
     figsize_per_config: float = 0.45,
+    *,
+    x_scale: str = "linear",
+    output_suffix: str = "",
 ) -> Path | None:
     grouped: Dict[str, np.ndarray] = {}
     for config, series in df.groupby(config_col)[normalized_col]:
@@ -122,22 +125,52 @@ def _plot_category_boxplot(
         patch.set_facecolor(color)
         patch.set_alpha(0.7)
 
-    ax.set_xlabel("Normalized Iterations (iters / max_iters)")
+    xlabel = "Normalized Iterations (iters / max_iters)"
+    if x_scale == "log":
+        xlabel += " [log scale]"
+    ax.set_xlabel(xlabel)
     ax.set_ylabel("Preconditioner")
     title = f"{base_title} - {category_label}"
     ax.set_title(title)
-    ax.grid(axis="x", alpha=0.3)
 
     max_value = max(float(values.max()) for values in data)
     x_max = max(1.05, max_value * 1.1)
-    ax.set_xlim(0, x_max)
+
+    grid_kwargs = {"axis": "x", "alpha": 0.3}
+    if x_scale == "log":
+        positive_mins: list[float] = []
+        for values in data:
+            positives = values[values > 0]
+            if len(positives) == 0:
+                continue
+            positive_mins.append(float(positives.min()))
+
+        if not positive_mins:
+            plt.close(fig)
+            print(
+                f"Skipping log-scale plot for category '{category_key}' due to lack of positive values"
+            )
+            return None
+
+        min_value = min(positive_mins)
+        x_min = min_value * 0.8
+        ax.set_xscale("log")
+        ax.set_xlim(x_min, x_max)
+        ax.grid(which="both", **grid_kwargs)
+    else:
+        ax.set_xlim(0, x_max)
+        ax.grid(**grid_kwargs)
+
     ax.axvline(1.0, linestyle="--", color="gray", alpha=0.6)
 
     plt.tight_layout()
 
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    output_path = output_dir / output_name_template.format(category=category_key)
+    rendered_name = output_name_template.format(category=category_key)
+    output_path = output_dir / rendered_name
+    if output_suffix:
+        output_path = output_path.with_stem(output_path.stem + output_suffix)
 
     savefig_kwargs: Dict[str, str] = {}
     file_format = output_path.suffix.lstrip(".").lower()
@@ -161,7 +194,8 @@ def plot_normalized_iterations_by_condition_category(
     normalized_col: str = "normalized_iteration_fraction",
     output_dir: PathLike = Path("outputs"),
     output_name_template: str = "normalized_iterations_by_prec_{category}.svg",
-) -> Dict[str, Path | None]:
+    scales: Iterable[str] = ("linear", "log"),
+) -> Dict[str, Dict[str, Path | None]]:
     """Create boxplots of normalized iterations per preconditioner across condition categories."""
     col_map = detect_preconditioner_columns(df)
     _ensure_required_columns(
@@ -191,26 +225,41 @@ def plot_normalized_iterations_by_condition_category(
         "high_cond": r"High Condition ($10^{10} \leq \kappa_2(A)$)",
     }
 
-    output_paths: Dict[str, Path | None] = {}
-    for category, subset in categories.items():
-        if subset.empty:
-            print(f"No data for category '{category}', skipping plot")
-            output_paths[category] = None
-            continue
+    scales = tuple(scales)
+    valid_scales = {"linear", "log"}
+    invalid_scales = sorted({scale for scale in scales if scale not in valid_scales})
+    if invalid_scales:
+        raise ValueError(
+            "Unsupported x-axis scale(s): " + ", ".join(invalid_scales)
+        )
 
+    output_paths: Dict[str, Dict[str, Path | None]] = {}
+    for category, subset in categories.items():
         label = category_labels.get(category, category)
         filename_template = output_name_template
 
-        output_paths[category] = _plot_category_boxplot(
-            subset,
-            config_col=config_col,
-            normalized_col=normalized_col,
-            category_key=category,
-            category_label=label,
-            base_title=base_title,
-            output_dir=output_dir,
-            output_name_template=filename_template,
-        )
+        if subset.empty:
+            print(f"No data for category '{category}', skipping plot")
+            output_paths[category] = {scale: None for scale in scales}
+            continue
+
+        paths_for_scales: Dict[str, Path | None] = {}
+        for scale in scales:
+            suffix = "" if scale == "linear" else f"_{scale}"
+            paths_for_scales[scale] = _plot_category_boxplot(
+                subset,
+                config_col=config_col,
+                normalized_col=normalized_col,
+                category_key=category,
+                category_label=label,
+                base_title=base_title,
+                output_dir=output_dir,
+                output_name_template=filename_template,
+                x_scale=scale,
+                output_suffix=suffix,
+            )
+
+        output_paths[category] = paths_for_scales
 
     return output_paths
 
@@ -223,8 +272,10 @@ if __name__ == "__main__":
     outputs = plot_normalized_iterations_by_condition_category(dataframe)
 
     print("\nSummary:")
-    for category, path in outputs.items():
-        if path:
-            print(f"  {category}: {path}")
-        else:
-            print(f"  {category}: No plot generated")
+    for category, scale_paths in outputs.items():
+        for scale, path in scale_paths.items():
+            label = f"{category} ({scale})"
+            if path:
+                print(f"  {label}: {path}")
+            else:
+                print(f"  {label}: No plot generated")
