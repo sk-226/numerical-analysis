@@ -183,7 +183,8 @@ def plot_solve_status_ratio_by_prec_label(
 
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    target_filename = output_filename or f"{title}.svg"
+    filename = f"{title.replace(' ', '_')}.svg"
+    target_filename = output_filename or filename
     output_path = output_dir / target_filename
     plt.savefig(output_path, format="svg")
     plt.close(fig)
